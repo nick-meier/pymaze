@@ -1,3 +1,5 @@
+#run in terminal, currently working on mac, should work on linux, should not work on pc.
+
 from random import randrange as rand
 
 import sys
