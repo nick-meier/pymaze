@@ -1,4 +1,4 @@
-#run in terminal, currently working on mac, should work on linux, should not work on pc.
+#requires python3
 
 from random import randrange as rand
 
@@ -6,39 +6,41 @@ import sys
 
 ################################################################################
 #http://code.activestate.com/recipes/577977-get-single-keypress/
-try:
-    import tty, termios
-except ImportError:
-    # Probably Windows.
-    try:
-        import msvcrt
-    except ImportError:
-        # FIXME what to do on other platforms?
-        # Just give up here.
-        raise ImportError('getch not available')
-    else:
-        getch = msvcrt.getch
-else:
-    def getch():
-        """getch() -> key character
+# try:
+#     import tty, termios
+# except ImportError:
+#     # Probably Windows.
+#     try:
+#         import msvcrt
+#     except ImportError:
+#         # FIXME what to do on other platforms?
+#         # Just give up here.
+#         raise ImportError('getch not available')
+#     else:
+#         getch = msvcrt.getch
+# else:
+#     def getch():
+#         """getch() -> key character
 
-        Read a single keypress from stdin and return the resulting character. 
-        Nothing is echoed to the console. This call will block if a keypress 
-        is not already available, but will not wait for Enter to be pressed. 
+#         Read a single keypress from stdin and return the resulting character. 
+#         Nothing is echoed to the console. This call will block if a keypress 
+#         is not already available, but will not wait for Enter to be pressed. 
 
-        If the pressed key was a modifier key, nothing will be detected; if
-        it were a special function key, it may return the first character of
-        of an escape sequence, leaving additional characters in the buffer.
-        """
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
-            ch = sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        return ch
+#         If the pressed key was a modifier key, nothing will be detected; if
+#         it were a special function key, it may return the first character of
+#         of an escape sequence, leaving additional characters in the buffer.
+#         """
+#         fd = sys.stdin.fileno()
+#         old_settings = termios.tcgetattr(fd)
+#         try:
+#             tty.setraw(fd)
+#             ch = sys.stdin.read(1)
+#         finally:
+#             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+#         return ch
 
+import tty
+import termios
 import fcntl
 import os
 import time
@@ -66,141 +68,123 @@ class nonblocking(object):
 ################################################################################
 
 class Maze(object):
+
 	def __init__(self):
-		print("Enter width")	#Make odd (+1 if even)
-		self.width = (int(input()) // 2) * 2 + 1
-		print("Enter height")
-		self.height = (int(input()) // 2) * 2 + 1
+		try:
+			self.width = (int(input('Enter width: ')) * 2 + 1)
+			self.height = (int(input('Enter height: ')) * 2 + 1)
+		except ValueError:
+			print('Invalid size. Dimensions must be integers.')
+			sys.exit()
 
-		sys.stdout.write("\x1b[8;{rows};{cols}t".format(rows=self.height + 1, cols=self.width * 2))
+		self.maze = []
+		for y in range(self.height):
+			row = []
+			for x in range(self.width):
+				row.append(False)
+			self.maze.append(row)
 
-		def initmaze(w, h):
-			maze = []
-			for row in range(h):
-				maze += [[1] * (w)]
-			return maze
+		#Position of player. Begins at impossible value so it will not print if not set correctly.
+		self.xPos = -1
+		self.yPos = -1
 
-		self.maze = initmaze(self.width, self.height)
-		self.xpos = -1
-		self.ypos = -1
+	def isPath(self, x, y):
+		return self.maze[y][x]
 
 	def fillmaze(self, x, y):
-		#while path while neighbours might be cleaner
-		position = [x, y]
-		path = [[x, y]]
-		self.maze[position[1]][position[0]] = 0
-		for i in range(self.width * self.height * 10):
-			if not path:
-				break
+		path = [(x, y)]
+
+		while len(path) > 0:
+			x = path[len(path) - 1][0]
+			y = path[len(path) - 1][1]
+			self.maze[y][x] = True
+
+			#Get unassigned neighbors
 			neighbours = []
+			if (x > 1) and (self.isPath(x - 2, y) == False):
+				neighbours.append((x - 2, y))
+			if (x < self.width - 2) and (self.isPath(x + 2, y) == False):
+				neighbours.append((x + 2, y))
+			if (y > 1) and (self.isPath(x, y - 2) == False):
+				neighbours.append((x, y - 2))
+			if (y < self.height - 2) and (self.isPath(x, y + 2) == False):
+				neighbours.append((x, y + 2))
 
-			if position[0] > 1 and (self.maze[position[1]][position[0] - 2] == 1):
-				neighbours.append([x - 2, y, 'W'])
-			if position[0] < self.width - 2 and (self.maze[position[1]][position[0] + 2] == 1):
-				neighbours.append([x + 2, y, 'E'])
-			if position[1] > 1 and (self.maze[position[1] - 2][position[0]] == 1):
-				neighbours.append([x, y - 2, 'N'])
-			if position[1] < self.height - 2 and (self.maze[position[1] + 2][position[0]] == 1):
-				neighbours.append([x, y + 2, 'S'])
-
-			if neighbours:
-				temp = neighbours[rand(len(neighbours))]
-				position = temp[:2]
-				direction = temp[2]
-
-				path += [position]
-
-				if direction == 'W':
-					self.maze[y][x - 1] = 0
-				elif direction == 'E':
-					self.maze[y][x + 1] = 0
-				elif direction == 'N':
-					self.maze[y - 1][x] = 0
-				else:
-					self.maze[y + 1][x] = 0
-
+			#Make path to random neighbour if one exists
+			if len(neighbours) > 0:
+				nextTile = neighbours[rand(len(neighbours))]
+				self.maze[int((y + nextTile[1]) / 2)][int((x + nextTile[0]) / 2)] = True
+				path.append(nextTile)
+			#Else remove current tile from stack
 			else:
-				position = path.pop()
-
-			x = position[0]
-			y = position[1]
-			self.maze[position[1]][position[0]] = 0
-			print(self)
-		self.maze[0][0] = 2
-		self.maze[self.height - 1][self.width - 1] = 3
-		print(self)
+				path.pop()
 
 	def play(self):
-		self.xpos = 0
-		self.ypos = 0
+		self.xPos = 1
+		self.yPos = 1
 		os.system('clear')
-		print("Use arrow keys to move, win by reaching the XX square.")
-		time.sleep(5)
-		print(self)
+		print("Use arrow keys to move. Win by reaching the (En)d.")
+		time.sleep(3)
 		while (True):
-			if (self.xpos == self.width - 1 and self.ypos == self.height - 1):
+			print(self)
+
+			#Check if you reached finish
+			if (self.xPos == self.width - 2 and self.yPos == self.height - 2):
 				return
+
+			#Get nonblocking input
 			with raw(sys.stdin):
 				with nonblocking(sys.stdin):
 					command = ""
 					current = sys.stdin.read(1)
 					while not current:
-						time.sleep(.1)
+						time.sleep(.05)
 						current = sys.stdin.read(1)
 					while current:
 						command += current
 						current = sys.stdin.read(1)
+
 			#http://stackoverflow.com/questions/22397289/finding-the-values-of-the-arrow-keys-in-python-why-are-they-triples
+			#Deal with input
 			if command =='\x1b[A':
-				if self.ypos > 0 and (self.maze[self.ypos - 1][self.xpos] != 1):
-					self.ypos -= 1
+				if self.yPos > 1 and self.isPath(self.xPos, self.yPos - 1):
+					self.yPos -= 2
 			elif command =='\x1b[B':
-				if self.ypos < self.height - 1 and (self.maze[self.ypos + 1][self.xpos] != 1):
-					self.ypos += 1
+				if self.yPos < self.height - 2 and self.isPath(self.xPos, self.yPos + 1):
+					self.yPos += 2
 			elif command =='\x1b[C':
-				if self.xpos < self.width - 1 and (self.maze[self.ypos][self.xpos + 1] != 1):
-					self.xpos += 1
+				if self.xPos < self.width - 2 and self.isPath(self.xPos + 1, self.yPos):
+					self.xPos += 2
 			elif command =='\x1b[D':
-				if self.xpos > 0 and (self.maze[self.ypos][self.xpos - 1] != 1):
-					self.xpos -= 1
+				if self.xPos > 1 and self.isPath(self.xPos - 1, self.yPos):
+					self.xPos -= 2
 			elif command == '\x1b':
 				sys.exit()
-			else:
-				print("not an arrow key!")
-			print(self)
-				
 
 	def __repr__(self):
 		os.system('clear')
-		for row in range(self.height):
-			asciirow = ""
-			for index in range(self.width):
-				value = self.maze[row][index]
-				if (row == self.ypos and index == self.xpos):
-					asciirow += "@@"
-				#path
-				elif value == 0:
-					asciirow += "  "
-				#wall
-				elif value == 1:
-					asciirow += "[]"
-				#start
-				elif value == 2:
-					asciirow += "SS"
-				#end
-				elif value == 3:
-					asciirow += "XX"
-					return asciirow
-			print(asciirow)
-		return ""
+		maze = ""
+		for y in range(self.height):
+			for x in range(self.width):
+				if x == self.xPos and y == self.yPos:
+					maze += "@@"
+				elif x == 1 and y == 1:
+					maze += "St"
+				elif x == self.width - 2 and y == self.height - 2:
+					maze += "Ex"
+				elif self.maze[y][x] == True:
+					maze += "  "
+				else:
+					maze += "[]"
+			maze += "\n"
+		return maze
 
 
 def main():
 	print("Maze generator by Nick Meier")
-	exitFlag = False
-	while (not exitFlag):
+	while True:
 		a = Maze()
-		a.fillmaze(0,0)
+		a.fillmaze(1, 1)
 		a.play()
 		print("Maze completed! Do you want to play again? (y)es or (n)o")
 		while (True):
@@ -208,8 +192,7 @@ def main():
 			if (command == "y" or command == "yes"):
 				break
 			elif (command == "n" or command == "no"):
-				exitFlag = True
-				break
+				return
 			else:
 				print("invalid command")
 				continue
